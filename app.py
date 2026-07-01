@@ -1,16 +1,26 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
+import matplotlib.font_manager as fm  # 引入字体管理器
+import os
 
 # 设置网页基本配置
 st.set_page_config(page_title="质茶门店利润敏感度测试", layout="wide")
 
-# 支持中文显示的字体配置（防止Matplotlib画图时中文变成方块）
-plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun', 'Arial'] # 常用中文黑体、微软雅黑
+# ★★★ 核心修复：动态加载项目内的中文字体文件，彻底根治云端方块字 ★★★
+font_path = "simhei.ttf"
+if os.path.exists(font_path):
+    # 如果找到了上传的字体文件，优先使用它
+    my_font = fm.FontProperties(fname=font_path)
+    plt.rcParams['font.sans-serif'] = [my_font.get_name()]
+else:
+    # 本地兜底配置
+    plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial']
+    my_font = fm.FontProperties()
+
 plt.rcParams['axes.unicode_minus'] = False # 正常显示负号
 
-# ★ 最上面的名字改成：质茶门店利润敏感度测试
+# 最上面的名字
 st.title("🧋 质茶门店利润敏感度测试")
 st.markdown("---")
 
@@ -25,13 +35,11 @@ st.sidebar.header("🏗️ 初始投资配置")
 initial_investment = st.sidebar.number_input("门店营建投资总额 (元)", value=600000, step=50000)
 
 # 2. 财务算法核心逻辑
-monthly_revenue = daily_cups * 30 * avg_price # 月营业额
-cost_raw = monthly_revenue * raw_material_rate # 原材料绝对值
+monthly_revenue = daily_cups * 30 * avg_price 
+cost_raw = monthly_revenue * raw_material_rate 
 
-# 动态房租：保底46240与月营业额16%抽成取其高
 rent = max(46240, monthly_revenue * 0.16)
 
-# 动态阶梯人力费用还原
 if monthly_revenue < 150000:
     labor = 25300
 elif monthly_revenue < 200000:
@@ -41,23 +49,20 @@ elif monthly_revenue < 300000:
 else:
     labor = 52880
 
-# 其他刚性费用与变动税费（含25000折旧）
 depreciation = 25000
 other_ops_costs = (
-    5576          # 物业及商场推广
-    + 6000        # 水电
-    + 5000        # 门店杂费
-    + 10000       # 营销推广
-    + depreciation # 折旧摊销
-    + (monthly_revenue * 0.02) # 营业税金
-    + (monthly_revenue * 0.03) # 手续费
+    5576          
+    + 6000        
+    + 5000        
+    + 10000       
+    + depreciation 
+    + (monthly_revenue * 0.02) 
+    + (monthly_revenue * 0.03) 
 )
 
-# 账面净利润（考虑折旧）
 net_profit = monthly_revenue - cost_raw - rent - labor - other_ops_costs
 net_margin = (net_profit / monthly_revenue) * 100 if monthly_revenue > 0 else 0
 
-# 回本周期计算（加回非现金折旧支出，基于纯现金流）
 monthly_cash_flow = net_profit + depreciation
 payback_period = initial_investment / monthly_cash_flow if monthly_cash_flow > 0 else float('inf')
 
@@ -84,7 +89,7 @@ st.markdown("---")
 # 4. 图表区
 col_left, col_right = st.columns(2)
 
-# ★ 左下名字改成：月度成本利润结构，且环形图内部标签完全汉化
+# 左下：月度成本利润结构
 with col_left:
     st.markdown("### 🍕 月度成本利润结构")
     labels = ['原材料成本', '房租物业', '人力成本', '折旧摊销', '税费及其他杂费', '账面净利润']
@@ -92,11 +97,20 @@ with col_left:
     
     fig1, ax1 = plt.subplots(figsize=(6, 5))
     colors_list = ['#ffb3b3','#66b3ff','#99ff99','#ffcc99','#c2c2f0','#76d7c4']
-    ax1.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90, 
-            colors=colors_list, wedgeprops=dict(width=0.4, edgecolor='w'))
+    
+    # 将传进去的字体应用到饼图的文字标签上
+    wedges, texts, autotexts = ax1.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90, 
+                                       colors=colors_list, wedgeprops=dict(width=0.4, edgecolor='w'))
+    
+    # 强制让饼图的所有汉字使用上传的字体文件，防止乱码
+    for text in texts:
+        text.set_fontproperties(my_font)
+    for autotext in autotexts:
+        autotext.set_fontproperties(my_font)
+        
     st.pyplot(fig1)
 
-# ★ 右下改为：回报周期敏感度测试
+# 右下：回报周期敏感度测试
 with col_right:
     st.markdown("### 📉 回报周期敏感度测试")
     
@@ -124,23 +138,30 @@ with col_right:
     
     if len(payback_tests) > 0:
         ax2.plot(valid_cups, payback_tests, color='crimson', marker='.', linewidth=2)
+        
+        # 强制给图例和轴标签设置上传的中文字体
         ax2.axhline(12, color='green', linestyle='--', alpha=0.6, label='12个月 (黄金周转线)')
         ax2.axhline(18, color='orange', linestyle='--', alpha=0.6, label='18个月 (风险预警线)')
         
         if payback_period != float('inf') and payback_period <= 48:
             ax2.plot(daily_cups, payback_period, marker='*', color='gold', markersize=15, label='当前滑块所处状态')
             
-        ax2.set_xlabel("日均出杯量 (杯)")
-        ax2.set_ylabel("投资回收期 (个月)")
+        ax2.set_xlabel("日均出杯量 (杯)", fontproperties=my_font)
+        ax2.set_ylabel("投资回收期 (个月)", fontproperties=my_font)
         
         max_y = max(payback_tests) if len(payback_tests) > 0 else 24
         ax2.set_ylim(0, min(48, max(24, max_y + 4)))
         ax2.set_xlim(100, 1000)
-        ax2.legend()
+        
+        # 图例字体应用
+        leg = ax2.legend()
+        for text in leg.get_texts():
+            text.set_fontproperties(my_font)
+            
         ax2.grid(True, linestyle=':', alpha=0.6)
     else:
         ax2.text(0.5, 0.5, "当前价格/成本配置下，全盘现金流为负，无法回本", 
-                 ha='center', va='center', fontsize=12, color='gray')
+                 ha='center', va='center', fontsize=12, color='gray', fontproperties=my_font)
         ax2.set_xlim(100, 1000)
         ax2.set_ylim(0, 24)
         
